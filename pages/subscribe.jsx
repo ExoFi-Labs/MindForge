@@ -12,72 +12,54 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
 
 const CheckoutForm = () => {
   const stripe = useStripe();
-  const elements = useElements();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (!stripe || !elements) {
-      // Stripe.js has not yet loaded.
-      // Make sure to disable form submission until Stripe.js has loaded.
-      return;
-    }
-
+  const handleCheckout = async () => {
     setLoading(true);
     setMessage(null);
 
-    const cardElement = elements.getElement(CardElement);
-
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
-      type: 'card',
-      card: cardElement,
+    const response = await fetch('/api/stripe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        priceId: 'price_1Pi9UdClTxcM5vvL74WZeecd', // Use the correct price ID
+      }),
     });
 
-    if (error) {
-      console.log('[error]', error);
-      setMessage(error.message);
-      setLoading(false);
-    } else {
-      console.log('[PaymentMethod]', paymentMethod);
+    const text = await response.text(); // Get the response as text
+    console.log('Response:', text); // Log the raw response
 
-      try {
-        const response = await fetch('/api/stripe', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: 'customer@example.com', // Replace with email input from user
-            paymentMethodId: paymentMethod.id,
-          }),
-        });
-
-        if (response.ok) {
-          const subscription = await response.json();
-          console.log('Subscription:', subscription);
-          setMessage('Payment successful! You are now subscribed.');
-        } else {
-          throw new Error('Network response was not ok.');
+    try {
+      const session = JSON.parse(text); // Try to parse the response as JSON
+      if (response.ok) {
+        const { error } = await stripe.redirectToCheckout({ sessionId: session.id });
+        if (error) {
+          console.warn('Error redirecting to checkout:', error);
+          setMessage('Failed to redirect to checkout.');
         }
-      } catch (error) {
-        console.error('There was a problem with the fetch operation:', error);
-        setMessage('Payment failed: ' + error.message);
-      } finally {
-        setLoading(false);
+      } else {
+        setMessage('Failed to create checkout session.');
       }
+    } catch (error) {
+      console.error('Error parsing JSON:', error);
+      setMessage('Error parsing response: ' + text); // Show the raw response in the message
     }
+
+    setLoading(false);
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <CardElement />
-      <button type="submit" disabled={!stripe || loading}>
-        {loading ? "Processing..." : "Pay"}
+    <div className="subscription-container">
+      <h1>Subscribe to Our Service</h1>
+      <p>Join us for just $9.99/month and enjoy exclusive benefits!</p>
+      <button onClick={handleCheckout} disabled={loading}>
+        {loading ? "Processing..." : "Subscribe Now"}
       </button>
       {message && <div>{message}</div>}
-    </form>
+    </div>
   );
 };
 
